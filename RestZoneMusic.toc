@@ -2,12 +2,15 @@
 ## Title: RestZoneMusic
 ## Notes: Musica aleatoria en areas de descanso.
 ## Author: V
-## Version: 1.4
+## Version: 1.5
 ## SavedVariables: RestZoneMusicDB
 ## IconTexture: 133868
 
 Libs\Ace3\LibStub\LibStub.lua
 Libs\Ace3\CallbackHandler-1.0\CallbackHandler-1.0.xml
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\lib.xml
+
 Libs\Ace3\AceGUI-3.0\AceGUI-3.0.xml
 Libs\Ace3\AceConsole-3.0\AceConsole-3.0.xml
 Libs\Ace3\AceConfig-3.0\AceConfig-3.0.xml

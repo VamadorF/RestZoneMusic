@@ -1,16 +1,10 @@
 local ADDON_NAME = "RestZoneMusic"
 
--- Validacion de dependencias al inicio (visible en BugSack / BugGrabber si falla)
-local AceConfig = assert(
-    LibStub("AceConfig-3.0", true),
-    "RestZoneMusic: Falla crítica. AceConfig-3.0 no está cargado."
-)
-local AceConfigDialog = assert(
-    LibStub("AceConfigDialog-3.0", true),
-    "RestZoneMusic: Falla crítica. AceConfigDialog-3.0 no está cargado."
-)
+local AceConfig = assert(LibStub("AceConfig-3.0", true), "RestZoneMusic: Falla crítica. AceConfig-3.0 no está cargado.")
+local AceConfigDialog = assert(LibStub("AceConfigDialog-3.0", true), "RestZoneMusic: Falla crítica. AceConfigDialog-3.0 no está cargado.")
+local ldb = assert(LibStub("LibDataBroker-1.1", true), "RestZoneMusic: Falla crítica. LibDataBroker-1.1 no está cargado.")
+local icon = assert(LibStub("LibDBIcon-1.0", true), "RestZoneMusic: Falla crítica. LibDBIcon-1.0 no está cargado.")
 
--- Descartar primeros valores de la secuencia PRNG del cliente (sin math.randomseed; lo gestiona el motor)
 math.random()
 math.random()
 math.random()
@@ -18,14 +12,11 @@ math.random()
 RestZoneMusicDB = RestZoneMusicDB or {}
 local db
 local ticker
-local minimapButton
 local isPlaying = false
 local pendingPlay = false
 
 local DEFAULTS = {
     enabled = true,
-    showMinimap = true,
-    minimapAngle = 225,
     timerInterval = 180,
     lastIndex = 0,
 }
@@ -50,7 +41,7 @@ local TRACKS = {
     551820, 551821, 551822, 551823, 551824, 551825, 551826, 551827,
 
     -- Warlords of Draenor
-    641804, 641805, 641806, 641807, 641808, 641809, 641810, 642866, 642867, 642868, 642878,
+    641804, 641805, 641806, 641807, 641808, 641809, 641810, 642878,
 
     -- Legion
     731548, 731549, 731550, 731551, 731552, 731553, 731554, 731555, 731556,
@@ -67,14 +58,48 @@ local TRACKS = {
     4013993, 4013994, 4013995, 4013996, 4013997, 4013998, 4013999, 4014000,
     4014001, 4014002, 4014003, 4014004, 4014005,
 
-    -- IDs adicionales validados (repositorio)
-    1390342, 1390344, 2005952, 2005953, 2005954, 4622170, 4622171,
-
     -- The War Within
-    5341735, 5341736, 5341737, 5341738, 5341739, 5341740, 5341741, 5341742, 5341743, 5341744
+    5341735, 5341736, 5341737, 5341738, 5341739, 5341740, 5341741, 5341742,
+
+    -- Additional Tracks
+    642866, 642867, 642868, 1390342, 1390344, 2005952, 2005953, 2005954,
+    4622170, 4622171, 5341743, 5341744
 }
 
--- Bolsa Fisher-Yates: cada indice sale una vez por ciclo completo (distribucion uniforme por ronda)
+local TRACK_NAMES = {
+    [53183] = "Classic Inn 1", [53184] = "Classic Inn 2", [53185] = "Classic Inn 3", [53186] = "Classic Inn 4", [53187] = "Classic Inn 5",
+    [53188] = "Classic Inn 6", [53189] = "Classic Inn 7", [53190] = "Classic Inn 8", [53191] = "Classic Inn 9", [53192] = "Classic Inn 10",
+    [53193] = "Classic Inn 11", [53194] = "Classic Inn 12", [53195] = "Classic Inn 13", [53196] = "Classic Inn 14", [53197] = "Classic Inn 15",
+    [53198] = "Classic Inn 16", [53199] = "Classic Inn 17", [53200] = "Classic Inn 18", [53201] = "Classic Inn 19", [53202] = "Classic Inn 20",
+    [53203] = "Classic Inn 21", [53204] = "Classic Inn 22", [53323] = "Classic Inn 23", [53324] = "Classic Inn 24", [53325] = "Classic Inn 25",
+    [53326] = "Classic Inn 26", [53327] = "Classic Inn 27", [53328] = "Classic Inn 28", [53329] = "Classic Inn 29", [53330] = "Classic Inn 30",
+    [53331] = "Classic Inn 31", [53332] = "Classic Inn 32", [53333] = "Classic Inn 33", [53334] = "Classic Inn 34", [53335] = "Classic Inn 35",
+    [53336] = "Classic Inn 36", [53337] = "Classic Inn 37", [53338] = "Classic Inn 38", [53339] = "Classic Inn 39", [53340] = "Classic Inn 40",
+
+    [53300] = "TBC Inn 1", [53301] = "TBC Inn 2", [53302] = "TBC Inn 3", [53303] = "TBC Inn 4", [53304] = "TBC Inn 5",
+    [53305] = "TBC Inn 6", [53306] = "TBC Inn 7", [53307] = "TBC Inn 8", [53308] = "TBC Inn 9", [53309] = "TBC Inn 10", [53310] = "TBC Inn 11",
+
+    [116289] = "WotLK Inn 1", [116290] = "WotLK Inn 2", [116291] = "WotLK Inn 3", [116292] = "WotLK Inn 4", [116293] = "WotLK Inn 5", [116294] = "WotLK Inn 6", [116295] = "WotLK Inn 7",
+
+    [402589] = "Cataclysm Inn 1", [402590] = "Cataclysm Inn 2", [402591] = "Cataclysm Inn 3", [402592] = "Cataclysm Inn 4",
+
+    [551820] = "MoP Inn 1", [551821] = "MoP Inn 2", [551822] = "MoP Inn 3", [551823] = "MoP Inn 4", [551824] = "MoP Inn 5", [551825] = "MoP Inn 6", [551826] = "MoP Inn 7", [551827] = "MoP Inn 8",
+
+    [641804] = "WoD Inn 1", [641805] = "WoD Inn 2", [641806] = "WoD Inn 3", [641807] = "WoD Inn 4", [641808] = "WoD Inn 5", [641809] = "WoD Inn 6", [641810] = "WoD Inn 7", [642878] = "WoD Inn 8",
+
+    [731548] = "Legion Inn 1", [731549] = "Legion Inn 2", [731550] = "Legion Inn 3", [731551] = "Legion Inn 4", [731552] = "Legion Inn 5", [731553] = "Legion Inn 6", [731554] = "Legion Inn 7", [731555] = "Legion Inn 8", [731556] = "Legion Inn 9",
+
+    [1098785] = "BfA Inn 1", [1098786] = "BfA Inn 2", [1098787] = "BfA Inn 3", [1098788] = "BfA Inn 4", [1098789] = "BfA Inn 5", [1098790] = "BfA Inn 6", [1098791] = "BfA Inn 7", [1098792] = "BfA Inn 8", [1098793] = "BfA Inn 9", [1098794] = "BfA Inn 10", [1098795] = "BfA Inn 11", [1098796] = "BfA Inn 12", [1098797] = "BfA Inn 13", [1098798] = "BfA Inn 14",
+
+    [3418179] = "Shadowlands Inn 1", [3418180] = "Shadowlands Inn 2", [3418181] = "Shadowlands Inn 3", [3418182] = "Shadowlands Inn 4", [3418183] = "Shadowlands Inn 5", [3418184] = "Shadowlands Inn 6", [3418185] = "Shadowlands Inn 7", [3418186] = "Shadowlands Inn 8", [3418187] = "Shadowlands Inn 9", [3418188] = "Shadowlands Inn 10", [3418189] = "Shadowlands Inn 11",
+
+    [4013993] = "Dragonflight Inn 1", [4013994] = "Dragonflight Inn 2", [4013995] = "Dragonflight Inn 3", [4013996] = "Dragonflight Inn 4", [4013997] = "Dragonflight Inn 5", [4013998] = "Dragonflight Inn 6", [4013999] = "Dragonflight Inn 7", [4014000] = "Dragonflight Inn 8", [4014001] = "Dragonflight Inn 9", [4014002] = "Dragonflight Inn 10", [4014003] = "Dragonflight Inn 11", [4014004] = "Dragonflight Inn 12", [4014005] = "Dragonflight Inn 13",
+
+    [5341735] = "The War Within Inn 1", [5341736] = "The War Within Inn 2", [5341737] = "The War Within Inn 3", [5341738] = "The War Within Inn 4", [5341739] = "The War Within Inn 5", [5341740] = "The War Within Inn 6", [5341741] = "The War Within Inn 7", [5341742] = "The War Within Inn 8",
+
+    [642866] = "Additional Inn 1", [642867] = "Additional Inn 2", [642868] = "Additional Inn 3", [1390342] = "Additional Inn 4", [1390344] = "Additional Inn 5", [2005952] = "Additional Inn 6", [2005953] = "Additional Inn 7", [2005954] = "Additional Inn 8", [4622170] = "Additional Inn 9", [4622171] = "Additional Inn 10", [5341743] = "Additional Inn 11", [5341744] = "Additional Inn 12"
+}
+
 local shuffleBag = {}
 local bagIndex = 0
 
@@ -109,22 +134,18 @@ local function StopRestMusic()
 end
 
 local function PlayTrackAt(idx)
-    assert(
-        type(idx) == "number",
-        "RestZoneMusic: PlayTrackAt requiere un índice numérico. Valor recibido: " .. tostring(idx)
-    )
+    assert(type(idx) == "number", "RestZoneMusic: PlayTrackAt requiere un índice numérico.")
 
     local id = TRACKS[idx]
     if not id then
-        error(
-            "RestZoneMusic: Índice fuera de rango o FileDataID inexistente en la tabla TRACKS. Índice: "
-                .. tostring(idx),
-            2
-        )
+        error("RestZoneMusic: Índice fuera de rango o FileDataID inexistente.", 2)
     end
 
     PlayMusic(id)
     isPlaying = true
+
+    local trackName = TRACK_NAMES[id] or "Pista Desconocida"
+    print("|cff00ccff[RestZoneMusic]|r Reproduciendo: " .. trackName .. " (ID: " .. id .. ")")
 end
 
 local function StartRestMusic()
@@ -156,56 +177,12 @@ local function SkipTrack()
     end)
 end
 
-local function MinimapAngleToXY(angleDeg)
-    local r = Minimap:GetWidth() / 2 + 16
-    local rad = math.rad(angleDeg)
-    return math.cos(rad) * r, math.sin(rad) * r
-end
-
-local function UpdateMinimapButtonPosition()
-    if not db or not minimapButton then return end
-    local x, y = MinimapAngleToXY(db.minimapAngle)
-    minimapButton:ClearAllPoints()
-    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
-end
-
-local function CreateMinimapButton()
-    if minimapButton then return end
-    local btn = CreateFrame("Button", "RZM_MinimapButton", Minimap)
-    btn:SetSize(31, 31)
-    btn:SetFrameStrata("MEDIUM")
-    btn:SetFrameLevel(8)
-    btn:SetClampedToScreen(true)
-    btn:EnableMouse(true)
-    btn:RegisterForClicks("AnyUp")
-
-    btn.border = btn:CreateTexture(nil, "OVERLAY")
-    btn.border:SetSize(53, 53)
-    btn.border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    btn.border:SetPoint("TOPLEFT")
-
-    btn.icon = btn:CreateTexture(nil, "ARTWORK")
-    btn.icon:SetSize(20, 20)
-    btn.icon:SetTexture(133868)
-    btn.icon:SetPoint("CENTER", 0, 1)
-
-    btn.highlight = btn:CreateTexture(nil, "HIGHLIGHT")
-    btn.highlight:SetSize(31, 31)
-    btn.highlight:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-    btn.highlight:SetBlendMode("ADD")
-    btn.highlight:SetPoint("CENTER")
-
-    btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("RestZoneMusic", 0, 0.8, 1)
-        GameTooltip:AddLine("Clic Izquierdo: Abrir opciones", 1, 1, 1)
-        GameTooltip:AddLine("Clic Derecho: Siguiente pista", 1, 1, 1)
-        GameTooltip:AddLine("Shift + Clic: Activar / Desactivar", 0.5, 0.5, 0.5)
-        GameTooltip:Show()
-    end)
-    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    btn:SetScript("OnClick", function(self, button)
+-- Data Broker + LibDBIcon (posicion radial, persistencia de icono)
+local rzmDataObject = ldb:NewDataObject("RestZoneMusic", {
+    type = "launcher",
+    text = "RestZoneMusic",
+    icon = 133868,
+    OnClick = function(self, button)
         if IsShiftKeyDown() then
             db.enabled = not db.enabled
             if db.enabled and IsResting() then StartRestMusic() else StopRestMusic() end
@@ -215,25 +192,14 @@ local function CreateMinimapButton()
         elseif button == "RightButton" then
             if IsResting() then SkipTrack() else print("|cff00ccff[RestZoneMusic]|r Fuera de zona de descanso.") end
         end
-    end)
-
-    btn:RegisterForDrag("LeftButton")
-    btn:SetScript("OnDragStart", function(self)
-        self:SetScript("OnUpdate", function()
-            local cx, cy = GetCursorPosition()
-            local scale = Minimap:GetEffectiveScale()
-            local mx, my = Minimap:GetCenter()
-            local dx, dy = (cx / scale) - mx, (cy / scale) - my
-            db.minimapAngle = math.deg(math.atan2(dy, dx))
-            UpdateMinimapButtonPosition()
-        end)
-    end)
-    btn:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
-
-    minimapButton = btn
-    UpdateMinimapButtonPosition()
-    if not db.showMinimap then btn:Hide() end
-end
+    end,
+    OnTooltipShow = function(tt)
+        tt:AddLine("RestZoneMusic", 0, 0.8, 1)
+        tt:AddLine("Clic Izquierdo: Abrir opciones", 1, 1, 1)
+        tt:AddLine("Clic Derecho: Siguiente pista", 1, 1, 1)
+        tt:AddLine("Shift + Clic: Activar / Desactivar", 0.5, 0.5, 0.5)
+    end
+})
 
 local function BuildAceConfig()
     local options = {
@@ -255,12 +221,10 @@ local function BuildAceConfig()
                 order = 2,
                 type = "toggle",
                 name = "Icono en Minimapa",
-                get = function() return db.showMinimap end,
+                get = function() return not db.minimap.hide end,
                 set = function(_, val)
-                    db.showMinimap = val
-                    if minimapButton then
-                        if val then minimapButton:Show() else minimapButton:Hide() end
-                    end
+                    db.minimap.hide = not val
+                    if val then icon:Show("RestZoneMusic") else icon:Hide("RestZoneMusic") end
                 end,
             },
             timerInterval = {
@@ -301,11 +265,22 @@ events:SetScript("OnEvent", function(self, event, arg1)
         end
         db = RestZoneMusicDB
         if db.lastIndex < 0 or db.lastIndex > #TRACKS then db.lastIndex = 0 end
+
+        -- minimap: tabla propia por jugador (no reutilizar referencia de DEFAULTS)
+        if type(db.minimap) ~= "table" then
+            db.minimap = { hide = false }
+        elseif db.minimap.hide == nil then
+            db.minimap.hide = false
+        end
+        if db.showMinimap ~= nil then
+            db.minimap.hide = not db.showMinimap
+        end
+
         wipe(shuffleBag)
         bagIndex = 0
 
+        icon:Register("RestZoneMusic", rzmDataObject, db.minimap)
         BuildAceConfig()
-        CreateMinimapButton()
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_ENTERING_WORLD" then
