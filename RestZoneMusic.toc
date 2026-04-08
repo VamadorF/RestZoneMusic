@@ -1,13 +1,14 @@
 ## Interface: 120001
 ## Title: RestZoneMusic
-## IconTexture: 133868
-## Notes: Musica aleatoria en areas de descanso (FileDataIDs). Si aparece desactualizado, iguala este numero a select(4, GetBuildInfo()) o activa "Cargar addons desactualizados".
+## Notes: Musica aleatoria en areas de descanso.
 ## Author: V
 ## Version: 1.4
 ## SavedVariables: RestZoneMusicDB
+## IconTexture: 133868
 
-Libs/Ace3/LibStub/LibStub.lua
-Libs/Ace3/CallbackHandler-1.0/CallbackHandler-1.0.xml
-Libs/Ace3/AceGUI-3.0/AceGUI-3.0.xml
-Libs/Ace3/AceConfig-3.0/AceConfig-3.0.xml
+Libs\Ace3\LibStub\LibStub.lua
+Libs\Ace3\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\Ace3\AceGUI-3.0\AceGUI-3.0.xml
+Libs\Ace3\AceConfig-3.0\AceConfig-3.0.xml
+
 RestZoneMusic.lua
