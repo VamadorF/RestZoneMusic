@@ -63,7 +63,11 @@ local TRACKS = {
 
     -- Additional Tracks
     642866, 642867, 642868, 1390342, 1390344, 2005952, 2005953, 2005954,
-    4622170, 4622171, 5341743, 5341744
+    4622170, 4622171, 5341743, 5341744,
+
+    -- Tabernas Zone Music (IDs Wowhead / sonido; pueden diferir del FileDataID de PlayMusic — probar en juego)
+    4516, 11806, 12137, 12329, 11805, 5234, 5355, 12328, 80449, 12136,
+    233578, 178127, 218179, 338492
 }
 
 local TRACK_NAMES = {
@@ -97,7 +101,23 @@ local TRACK_NAMES = {
 
     [5341735] = "The War Within Inn 1", [5341736] = "The War Within Inn 2", [5341737] = "The War Within Inn 3", [5341738] = "The War Within Inn 4", [5341739] = "The War Within Inn 5", [5341740] = "The War Within Inn 6", [5341741] = "The War Within Inn 7", [5341742] = "The War Within Inn 8",
 
-    [642866] = "Additional Inn 1", [642867] = "Additional Inn 2", [642868] = "Additional Inn 3", [1390342] = "Additional Inn 4", [1390344] = "Additional Inn 5", [2005952] = "Additional Inn 6", [2005953] = "Additional Inn 7", [2005954] = "Additional Inn 8", [4622170] = "Additional Inn 9", [4622171] = "Additional Inn 10", [5341743] = "Additional Inn 11", [5341744] = "Additional Inn 12"
+    [642866] = "Additional Inn 1", [642867] = "Additional Inn 2", [642868] = "Additional Inn 3", [1390342] = "Additional Inn 4", [1390344] = "Additional Inn 5", [2005952] = "Additional Inn 6", [2005953] = "Additional Inn 7", [2005954] = "Additional Inn 8", [4622170] = "Additional Inn 9", [4622171] = "Additional Inn 10", [5341743] = "Additional Inn 11", [5341744] = "Additional Inn 12",
+
+    -- Wowhead / Zone Music taberna (tabla usuario 2026)
+    [4516]  = "Zone-TavernAlliance (Lion's Pride, Pig & Whistle, etc.)",
+    [11806] = "Zone-TavernDwarf01 (Stonefire, Thunderbrew)",
+    [12137] = "Zone-TavernUndead (Gallow's End, Tarren Mill)",
+    [12329] = "Zone-TavernTauren (Elder's Hearth, Smoke Lodge)",
+    [11805] = "Zone-TavernPirate (Salty Sailor, Bloodsail)",
+    [5234]  = "Zone-TavernHorde (Spirit Stone)",
+    [5355]  = "Zone-TavernHorde01 (Grunt's Place)",
+    [12328] = "Zone-TavernOrc / troll (Bad Juju Bar & Grill)",
+    [80449] = "Zone-TavernNightElf02 (Hunters' Refuge)",
+    [12136] = "Zone-TavernTempleofTheMoon",
+    [233578] = "Mariners Tavern (Jukebox)",
+    [178127] = "Mariners Tavern (_H)",
+    [218179] = "Tradewinds Tavern (A)",
+    [338492] = "Tradewinds Tavern (alt / otro parche)",
 }
 
 local shuffleBag = {}
