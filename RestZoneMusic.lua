@@ -1,7 +1,14 @@
 local ADDON_NAME = "RestZoneMusic"
 
-local AceConfig = LibStub("AceConfig-3.0")
-local AceConfigDialog = LibStub("AceConfigDialog-3.0")
+-- Validacion de dependencias al inicio (visible en BugSack / BugGrabber si falla)
+local AceConfig = assert(
+    LibStub("AceConfig-3.0", true),
+    "RestZoneMusic: Falla crítica. AceConfig-3.0 no está cargado."
+)
+local AceConfigDialog = assert(
+    LibStub("AceConfigDialog-3.0", true),
+    "RestZoneMusic: Falla crítica. AceConfigDialog-3.0 no está cargado."
+)
 
 -- Lua de WoW no expone time(); semilla con tiempo de servidor + fraccion de sesion
 do
@@ -88,8 +95,22 @@ local function StopRestMusic()
 end
 
 local function PlayTrackAt(idx)
+    assert(
+        type(idx) == "number",
+        "RestZoneMusic: PlayTrackAt requiere un índice numérico. Valor recibido: " .. tostring(idx)
+    )
+
     local id = TRACKS[idx]
-    if id then PlayMusic(id); isPlaying = true end
+    if not id then
+        error(
+            "RestZoneMusic: Índice fuera de rango o FileDataID inexistente en la tabla TRACKS. Índice: "
+                .. tostring(idx),
+            2
+        )
+    end
+
+    PlayMusic(id)
+    isPlaying = true
 end
 
 local function StartRestMusic()
@@ -239,6 +260,9 @@ events:RegisterEvent("PLAYER_LOGOUT")
 
 events:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
+        if not RestZoneMusicDB then
+            error("RestZoneMusic: La tabla global RestZoneMusicDB es nil tras la carga del addon.", 2)
+        end
         for k, v in pairs(DEFAULTS) do
             if RestZoneMusicDB[k] == nil then RestZoneMusicDB[k] = v end
         end
