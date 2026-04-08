@@ -13,6 +13,9 @@
 --      verificarse con /run PlayMusic(ID) en el cliente.
 --   D. SkipTrack() resetea el ticker para que el intervalo cuente desde el skip.
 --   E. Boton visible por defecto (alpha 1) con dim suave al salir del hover.
+--   F. StartRestMusic: StopMusic() tras el delay para cortar musica de zona.
+--   G. PLAYER_ENTERING_WORLD: arranque diferido 3 s.
+--   H. Panel de opciones con AceConfig-3.0 / AceGUI / AceConfigDialog (Blizzard).
 -------------------------------------------------------------------------------
 
 local ADDON_NAME = "RestZoneMusic"
@@ -173,6 +176,7 @@ local contextMenu
 local settingsCategory
 local isPlaying   = false
 local pendingPlay = false
+local musicStartToken = 0 -- invalida callbacks C_Timer.After solapados de StartRestMusic
 
 local BTN_ALPHA_FULL = 1
 local BTN_ALPHA_DIM  = 0.85
@@ -256,12 +260,19 @@ end
 
 local function StartRestMusic()
     if not db.enabled then return end
-    StopRestMusic()
+    musicStartToken = musicStartToken + 1
+    local token = musicStartToken
+    if ticker then
+        ticker:Cancel()
+        ticker = nil
+    end
     pendingPlay = true
     C_Timer.After(1.5, function()
+        if token ~= musicStartToken then return end
         if not pendingPlay then return end
         pendingPlay = false
         if not IsResting() or not db.enabled then return end
+        StopMusic()
         local idx = PickRandomTrack()
         PlayTrackAt(idx)
         ticker = C_Timer.NewTicker(db.timerInterval, function()
@@ -428,7 +439,7 @@ local function CreateMinimapButton()
 
     btn.icon = btn:CreateTexture(nil, "ARTWORK")
     btn.icon:SetSize(17, 17)
-    btn.icon:SetTexture("Interface\\Icons\\inv_misc_instruments_06")
+    btn.icon:SetTexture(133868)
     btn.icon:SetPoint("CENTER")
     btn.icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
 
@@ -504,98 +515,111 @@ local function CreateMinimapButton()
 end
 
 -- ============================================================
--- PANEL DE OPCIONES
+-- PANEL DE OPCIONES (AceConfig / AceGUI → opciones nativas Blizzard)
 -- ============================================================
 local function CreateSettingsPanel()
-    local panel = CreateFrame("Frame", "RZM_SettingsPanel")
-    panel.name  = "RestZoneMusic"
-
-    local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 16, -16)
-    title:SetText("|cff00ccffRestZoneMusic|r  v1.3")
-
-    local desc = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
-    desc:SetText("Musica aleatoria shuffle en areas de descanso (FileDataIDs).")
-    desc:SetTextColor(0.7, 0.7, 0.7)
-
-    local y = -75
-
-    local cbEnable = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-    cbEnable:SetPoint("TOPLEFT", 14, y)
-    cbEnable.Text:SetText("Activar RestZoneMusic")
-    cbEnable:SetScript("OnClick", function(self)
-        db.enabled = self:GetChecked()
-        if db.enabled and IsResting() then StartRestMusic() else StopRestMusic() end
-    end)
-    y = y - 30
-
-    local cbMini = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-    cbMini:SetPoint("TOPLEFT", 14, y)
-    cbMini.Text:SetText("Mostrar boton en minimapa")
-    cbMini:SetScript("OnClick", function(self)
-        db.showMinimap = self:GetChecked()
-        if minimapButton then
-            if db.showMinimap then minimapButton:Show() else minimapButton:Hide() end
-        end
-    end)
-    y = y - 42
-
-    local lblSlider = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    lblSlider:SetPoint("TOPLEFT", 14, y)
-    lblSlider:SetText("Intervalo entre tracks (segundos):")
-    y = y - 22
-
-    local slider = CreateFrame("Slider", "RZM_Slider", panel, "OptionsSliderTemplate")
-    slider:SetPoint("TOPLEFT", 14, y)
-    slider:SetWidth(220)
-    slider:SetMinMaxValues(30, 600)
-    slider:SetValueStep(10)
-    slider:SetObeyStepOnDrag(true)
-    _G["RZM_SliderLow"]:SetText("30s")
-    _G["RZM_SliderHigh"]:SetText("600s")
-    slider:SetScript("OnValueChanged", function(self, val)
-        local v = math.floor(val / 10 + 0.5) * 10
-        db.timerInterval = v
-        _G["RZM_SliderText"]:SetText(v .. "s")
-    end)
-    y = y - 52
-
-    local lblTracks = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    lblTracks:SetPoint("TOPLEFT", 14, y)
-    lblTracks:SetText(#TRACKS .. " tracks en el pool. Edita TRACKS en RestZoneMusic.lua.")
-    lblTracks:SetTextColor(0.6, 0.6, 0.6)
-    y = y - 28
-
-    local btnSkip = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    btnSkip:SetSize(160, 26)
-    btnSkip:SetPoint("TOPLEFT", 14, y)
-    btnSkip:SetText("Siguiente track (shuffle)")
-    btnSkip:SetScript("OnClick", function()
-        if IsResting() and isPlaying then SkipTrack()
-        elseif IsResting() then StartRestMusic()
-        else Print("No estas en area de descanso.") end
-    end)
-
-    local lblVerify = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    lblVerify:SetPoint("TOPLEFT", 14, y - 36)
-    lblVerify:SetText("Verifica IDs: /run PlayMusic(ID)")
-    lblVerify:SetTextColor(0.5, 0.7, 0.5)
-
-    panel:SetScript("OnShow", function()
-        cbEnable:SetChecked(db.enabled)
-        cbMini:SetChecked(db.showMinimap)
-        slider:SetValue(db.timerInterval)
-        _G["RZM_SliderText"]:SetText(db.timerInterval .. "s")
-    end)
-
-    if Settings and Settings.RegisterCanvasLayoutCategory then
-        local cat = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
-        Settings.RegisterAddOnCategory(cat)
-        settingsCategory = cat
-    else
-        InterfaceOptions_AddCategory(panel)
+    local AceConfig = LibStub("AceConfig-3.0", true)
+    local AceConfigDialog = LibStub("AceConfigDialog-3.0", true)
+    if not AceConfig or not AceConfigDialog then
+        Print("RestZoneMusic: no se cargaron AceConfig-3.0 / AceConfigDialog-3.0 (revisa Libs en el TOC).")
+        return
     end
+
+    local options = {
+        type = "group",
+        name = "RestZoneMusic",
+        args = {
+            header = {
+                type = "description",
+                name = "Info",
+                order = 0,
+                fontSize = "medium",
+                text = "|cff00ccffRestZoneMusic|r v1.4\nMusica aleatoria shuffle en areas de descanso (FileDataIDs).\nPool: "
+                    .. tostring(#TRACKS)
+                    .. " tracks (edita la tabla TRACKS en RestZoneMusic.lua).",
+            },
+            enabled = {
+                type = "toggle",
+                name = "Activar RestZoneMusic",
+                desc = "Reproduce musica en zonas de descanso.",
+                order = 1,
+                width = "full",
+                get = function()
+                    return RestZoneMusicDB.enabled
+                end,
+                set = function(_, val)
+                    RestZoneMusicDB.enabled = val
+                    if val and IsResting() then
+                        StartRestMusic()
+                    else
+                        StopRestMusic()
+                    end
+                end,
+            },
+            showMinimap = {
+                type = "toggle",
+                name = "Mostrar boton en minimapa",
+                order = 2,
+                width = "full",
+                get = function()
+                    return RestZoneMusicDB.showMinimap
+                end,
+                set = function(_, val)
+                    RestZoneMusicDB.showMinimap = val
+                    if minimapButton then
+                        if val then
+                            minimapButton:Show()
+                        else
+                            minimapButton:Hide()
+                        end
+                    end
+                end,
+            },
+            timerInterval = {
+                type = "range",
+                name = "Intervalo entre tracks (segundos)",
+                desc = "Tiempo entre cambios automaticos (30–600 s, pasos de 10).",
+                order = 3,
+                width = "full",
+                min = 30,
+                max = 600,
+                step = 10,
+                bigStep = 10,
+                get = function()
+                    return RestZoneMusicDB.timerInterval
+                end,
+                set = function(_, val)
+                    RestZoneMusicDB.timerInterval = math.floor(val / 10 + 0.5) * 10
+                end,
+            },
+            skip = {
+                type = "execute",
+                name = "Siguiente track (shuffle)",
+                order = 4,
+                width = "full",
+                func = function()
+                    if IsResting() and isPlaying then
+                        SkipTrack()
+                    elseif IsResting() then
+                        StartRestMusic()
+                    else
+                        Print("No estas en area de descanso.")
+                    end
+                end,
+            },
+            verify = {
+                type = "description",
+                name = "Verificacion",
+                order = 5,
+                fontSize = "small",
+                text = "Verifica FileDataIDs con: |cff00ff00/run PlayMusic(ID)|r (wago.tools → Sound/Music).",
+            },
+        },
+    }
+
+    AceConfig:RegisterOptionsTable(ADDON_NAME, options)
+    local _, categoryId = AceConfigDialog:AddToBlizOptions(ADDON_NAME, "RestZoneMusic")
+    settingsCategory = categoryId
 end
 
 -- ============================================================
@@ -664,8 +688,10 @@ events:SetScript("OnEvent", function(self, event, arg1)
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         if db then
-            if db.enabled and IsResting() then StartRestMusic()
-            else StopRestMusic() end
+            C_Timer.After(3.0, function()
+                if db.enabled and IsResting() then StartRestMusic()
+                else StopRestMusic() end
+            end)
         end
 
     elseif event == "PLAYER_UPDATE_RESTING" then
