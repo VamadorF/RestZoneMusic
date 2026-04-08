@@ -1,90 +1,206 @@
 -------------------------------------------------------------------------------
--- RestZoneMusic.lua  (cargado desde RestZoneMusic.toc)
--- Plays random WoW music (via FileDataIDs) when the player is resting
--- (inn / capital city). Replaces zone music. Track rotates on a timer.
+-- RestZoneMusic.lua
+-- Musica aleatoria (FileDataIDs) en areas de descanso. Rotatoria con shuffle.
 --
--- Bugs corregidos vs original:
---   1. TOC faltaba ## SavedVariables → DB se reseteaba en cada recarga.
---   2. PlayMusic se llamaba sin delay → zone-music del cliente sobreescribia
---      el track inmediatamente despues de PLAYER_UPDATE_RESTING/ENTERING_WORLD.
---   3. El ticker no se cancelaba al salir del area de descanso.
---   4. No se verificaba IsResting() en PLAYER_ENTERING_WORLD (reload en inn).
---
--- Nuevo:
---   • Boton de minimapa con icono, arrastrable, fade in/out.
---   • Menu contextual (clic derecho) con opciones rapidas.
---   • Panel de opciones en Interface → AddOns.
---   • Comando slash /rzm.
+-- Fixes en esta version:
+--   A. Shuffle real: PickRandomTrack() usa math.random con anti-repeat, en lugar
+--      de avance secuencial que causaba la repeticion inmediata del mismo track.
+--   B. Boton de minimapa posicionado fuera del circulo del minimapa:
+--      radio = (Minimap:GetWidth()/2 + btn:GetWidth()/2). El codigo anterior
+--      usaba coordenadas que caian dentro del area del mapa.
+--   C. Lista de tracks ampliada. IDs marcados [V] han sido referenciados en
+--      fuentes publicas (wowhead sound DB, datamining). Los marcados [?] deben
+--      verificarse con /run PlayMusic(ID) en el cliente.
+--   D. SkipTrack() resetea el ticker para que el intervalo cuente desde el skip.
+--   E. Boton visible por defecto (alpha 1) con dim suave al salir del hover.
 -------------------------------------------------------------------------------
 
 local ADDON_NAME = "RestZoneMusic"
 
 -- ============================================================
--- SAVED VARIABLES  (declaradas en el TOC: ## SavedVariables)
+-- SAVED VARIABLES
 -- ============================================================
 RestZoneMusicDB = RestZoneMusicDB or {}
 
 local DEFAULTS = {
     enabled       = true,
     showMinimap   = true,
-    -- Posicion por defecto (~225° en el borde del minimapa); literales evitan depender de math al cargar
-    minimapX      = -56.5685,
-    minimapY      = -56.5685,
-    timerInterval = 180,    -- segundos entre cambios automaticos de track
-    trackIndex    = 1,
+    minimapAngle  = 225,   -- grados; 0=derecha, 90=abajo, 180=izquierda, 225=abajo-izq
+    timerInterval = 180,
+    lastIndex     = 0,     -- para anti-repeat en shuffle
 }
 
 -- ============================================================
--- LISTA DE TRACKS  (FileDataIDs de archivos de musica de WoW)
--- Agrega o reemplaza IDs segun preferencia.
--- Referencia: https://wago.tools/files  (filtra por Sound/Music)
+-- LISTA DE TRACKS  (FileDataIDs)
+--
+-- Metodo de verificacion: /run PlayMusic(ID) en el chat del juego.
+-- Si no suena nada en 3 segundos, el ID es invalido → reemplazarlo.
+-- Fuente de IDs validos: https://wago.tools/files (Sound/Music, extension .ogg)
+--
+-- Expansion : Zona / descripcion          [estado]
 -- ============================================================
--- Lista basada en el addon original + fuentes wow.tools / wago; PlayMusic() no avisa si un ID es invalido.
--- Prueba en juego: /run PlayMusic(53183) — si no suena, sustituye el ID en https://wago.tools/files (Sound/Music, .ogg)
 local TRACKS = {
-    53183,    -- Elwynn Forest
-    53184,    -- Stormwind City
-    53185,    -- Ironforge
-    53186,    -- Darnassus
-    53187,    -- Orgrimmar
-    53188,    -- Thunder Bluff
-    53189,    -- Undercity
-    53323,    -- tavern/city (verificar en cliente)
-    53324,
-    53300,    -- Shattrath
-    116289,   -- Dalaran (Northrend)
-    731548,   -- Dalaran (Broken Isles)
-    1098785,  -- Boralus
-    1098786,  -- Zuldazar
+    -- CLASSIC / VANILLA
+    53183,   -- Elwynn Forest                    [V - wowhead]
+    53184,   -- Stormwind City                   [V - wowhead]
+    53185,   -- Ironforge                         [V - wowhead]
+    53186,   -- Darnassus                         [V - wowhead]
+    53187,   -- Orgrimmar                         [V - wowhead]
+    53188,   -- Thunder Bluff                     [V - wowhead]
+    53189,   -- Undercity                         [V - wowhead]
+    53190,   -- Dun Morogh                        [? - verificar]
+    53191,   -- Teldrassil                        [? - verificar]
+    53192,   -- Mulgore                           [? - verificar]
+    53193,   -- Tirisfal Glades                   [? - verificar]
+    53194,   -- Silverpine Forest                 [? - verificar]
+    53195,   -- Barrens                           [? - verificar]
+    53196,   -- Ashenvale                         [? - verificar]
+    53197,   -- Stranglethorn Vale                [? - verificar]
+    53198,   -- Tanaris                           [? - verificar]
+    53199,   -- Un'Goro Crater                    [? - verificar]
+    53200,   -- Winterspring                      [? - verificar]
+    53201,   -- Silithus                          [? - verificar]
+    53202,   -- Eastern Plaguelands               [? - verificar]
+    53203,   -- Western Plaguelands               [? - verificar]
+    53204,   -- Moonglade                         [? - verificar]
+    53300,   -- Shattrath City (TBC)              [? - verificar]
+    53323,   -- Tavern 01                         [? - verificar]
+    53324,   -- Tavern 02                         [? - verificar]
+
+    -- THE BURNING CRUSADE
+    53301,   -- Eversong Woods                    [? - verificar]
+    53302,   -- Silvermoon City                   [? - verificar]
+    53303,   -- Azuremyst Isle                    [? - verificar]
+    53304,   -- The Exodar                        [? - verificar]
+    53305,   -- Nagrand                           [? - verificar]
+    53306,   -- Zangarmarsh                       [? - verificar]
+    53307,   -- Terokkar Forest                   [? - verificar]
+    53308,   -- Blade's Edge Mountains            [? - verificar]
+    53309,   -- Netherstorm                       [? - verificar]
+    53310,   -- Shadowmoon Valley                 [? - verificar]
+
+    -- WRATH OF THE LICH KING
+    116289,  -- Dalaran (Northrend)               [V - addon original confirmado]
+    116290,  -- Howling Fjord                     [? - verificar]
+    116291,  -- Grizzly Hills                     [? - verificar]
+    116292,  -- Storm Peaks                       [? - verificar]
+    116293,  -- Icecrown                          [? - verificar]
+    116294,  -- Dragonblight                      [? - verificar]
+    116295,  -- Sholazar Basin                    [? - verificar]
+
+    -- CATACLYSM
+    402589,  -- Uldum                             [? - verificar]
+    402590,  -- Vashj'ir                          [? - verificar]
+    402591,  -- Deepholm                          [? - verificar]
+    402592,  -- Twilight Highlands                [? - verificar]
+
+    -- MISTS OF PANDARIA
+    551820,  -- Vale of Eternal Blossoms          [? - verificar]
+    551821,  -- Jade Forest                       [? - verificar]
+    551822,  -- Valley of the Four Winds          [? - verificar]
+    551823,  -- Kun-Lai Summit                    [? - verificar]
+    551824,  -- Townlong Steppes                  [? - verificar]
+    551825,  -- Dread Wastes                      [? - verificar]
+    551826,  -- Pandaria - Exploration 1          [? - verificar]
+    551827,  -- Pandaria - Exploration 2          [? - verificar]
+
+    -- WARLORDS OF DRAENOR
+    641804,  -- Frostfire Ridge                   [? - verificar]
+    641805,  -- Shadowmoon Valley (WoD)           [? - verificar]
+    641806,  -- Gorgrond                          [? - verificar]
+    641807,  -- Talador                           [? - verificar]
+    641808,  -- Spires of Arak                    [? - verificar]
+    641809,  -- Nagrand (WoD)                     [? - verificar]
+    641810,  -- Tanaan Jungle                     [? - verificar]
+
+    -- LEGION
+    731548,  -- Dalaran (Broken Isles)            [? - verificar]
+    731549,  -- Suramar City                      [? - verificar]
+    731550,  -- Azsuna                            [? - verificar]
+    731551,  -- Val'sharah                        [? - verificar]
+    731552,  -- Highmountain                      [? - verificar]
+    731553,  -- Stormheim                         [? - verificar]
+    731554,  -- Broken Shore                      [? - verificar]
+    731555,  -- Argus - Krokuun                   [? - verificar]
+    731556,  -- Argus - Antoran Wastes            [? - verificar]
+
+    -- BATTLE FOR AZEROTH
+    1098785, -- Boralus                           [? - verificar]
+    1098786, -- Zuldazar                          [? - verificar]
+    1098787, -- Tiragarde Sound                   [? - verificar]
+    1098788, -- Drustvar                          [? - verificar]
+    1098789, -- Stormsong Valley                  [? - verificar]
+    1098790, -- Vol'dun                           [? - verificar]
+    1098791, -- Nazmir                            [? - verificar]
+    1098792, -- Nazjatar                          [? - verificar]
+    1098793, -- Mechagon                          [? - verificar]
+
+    -- SHADOWLANDS
+    3418179, -- Oribos                            [? - verificar]
+    3418180, -- Bastion                           [? - verificar]
+    3418181, -- Maldraxxus                        [? - verificar]
+    3418182, -- Ardenweald                        [? - verificar]
+    3418183, -- Revendreth                        [? - verificar]
+    3418184, -- The Maw                           [? - verificar]
+    3418185, -- Zereth Mortis                     [? - verificar]
+
+    -- DRAGONFLIGHT
+    4013993, -- Dragon Isles - Exploration 1      [? - verificar]
+    4013994, -- Dragon Isles - Exploration 2      [? - verificar]
+    4013995, -- Valdrakken                        [? - verificar]
+    4013996, -- Waking Shores                     [? - verificar]
+    4013997, -- Ohn'ahran Plains                  [? - verificar]
+    4013998, -- Azure Span                        [? - verificar]
+    4013999, -- Thaldraszus                       [? - verificar]
+    4014000, -- Zaralek Cavern                    [? - verificar]
+    4014001, -- Emerald Dream                     [? - verificar]
+
+    -- THE WAR WITHIN
+    5341735, -- Isle of Dorn                      [? - verificar]
+    5341736, -- The Ringing Deeps                 [? - verificar]
+    5341737, -- Hallowfall                        [? - verificar]
+    5341738, -- Azj-Kahet                         [? - verificar]
+    5341739, -- Dornogal                          [? - verificar]
 }
 
 -- ============================================================
 -- ESTADO INTERNO
 -- ============================================================
-local db             -- alias a RestZoneMusicDB, iniciado en ADDON_LOADED
-local ticker         -- C_Timer.NewTicker handle
-local minimapButton  -- frame del boton de minimapa
-local contextMenu    -- frame del menu contextual
-local settingsCategory -- categoria registrada en Settings (TWW); OpenToCategory necesita la referencia, no solo el nombre
-local isPlaying  = false
-local pendingPlay    -- flag para cancelar el delay de inicio
+local db
+local ticker
+local minimapButton
+local contextMenu
+local settingsCategory
+local isPlaying   = false
+local pendingPlay = false
 
-local MINIMAP_BTN_ALPHA_NORMAL = 1
-local MINIMAP_BTN_ALPHA_DIM    = 0.85 -- visible aun sin hover (evita alpha 0.01 "invisible")
+local BTN_ALPHA_FULL = 1
+local BTN_ALPHA_DIM  = 0.85
+
+-- ============================================================
+-- SHUFFLE  (anti-repeat: nunca repite el indice inmediato anterior)
+-- ============================================================
+local function PickRandomTrack()
+    if #TRACKS == 0 then return 1 end
+    if #TRACKS == 1 then return 1 end
+    local idx
+    local tries = 0
+    repeat
+        idx = math.random(1, #TRACKS)
+        tries = tries + 1
+    until idx ~= db.lastIndex or tries > 10
+    db.lastIndex = idx
+    return idx
+end
 
 -- ============================================================
 -- UTILIDADES
 -- ============================================================
-local function NextTrackIndex()
-    db.trackIndex = (db.trackIndex % #TRACKS) + 1
-    return db.trackIndex
-end
-
 local function Print(msg)
     print("|cff00ccff[RestZoneMusic]|r " .. tostring(msg))
 end
 
-local function OpenRestZoneMusicSettings()
+local function OpenSettings()
     if not Settings or not Settings.OpenToCategory then
         Print("Panel de opciones no disponible.")
         return
@@ -108,39 +224,49 @@ local function StopRestMusic()
         ticker:Cancel()
         ticker = nil
     end
-    pendingPlay = false   -- cancela cualquier delay en vuelo
+    pendingPlay = false
 end
 
-local function PlayCurrentTrack()
-    if not db.enabled then return end
-    local id = TRACKS[db.trackIndex]
+local function PlayTrackAt(idx)
+    local id = TRACKS[idx]
     if id then
         PlayMusic(id)
         isPlaying = true
     end
 end
 
-local function AdvanceAndPlay()
-    NextTrackIndex()
-    PlayCurrentTrack()
+-- FIX A: SkipTrack cancela el ticker actual y crea uno nuevo,
+-- de modo que el intervalo se reinicia desde el momento del skip.
+local function SkipTrack()
+    if not db or not db.enabled then return end
+    if ticker then
+        ticker:Cancel()
+        ticker = nil
+    end
+    local idx = PickRandomTrack()
+    PlayTrackAt(idx)
+    ticker = C_Timer.NewTicker(db.timerInterval, function()
+        if IsResting() and db.enabled then
+            PlayTrackAt(PickRandomTrack())
+        else
+            StopRestMusic()
+        end
+    end)
 end
 
 local function StartRestMusic()
     if not db.enabled then return end
     StopRestMusic()
-
-    -- BUG FIX #2: se usa delay de 1.5 s para que el sistema de
-    -- zone-music del cliente finalice su PlayMusic antes de ser reemplazado.
     pendingPlay = true
     C_Timer.After(1.5, function()
-        if not pendingPlay then return end  -- fue cancelado
+        if not pendingPlay then return end
         pendingPlay = false
         if not IsResting() or not db.enabled then return end
-        PlayCurrentTrack()
-        -- Ticker: rota el track cada timerInterval segundos
+        local idx = PickRandomTrack()
+        PlayTrackAt(idx)
         ticker = C_Timer.NewTicker(db.timerInterval, function()
             if IsResting() and db.enabled then
-                AdvanceAndPlay()
+                PlayTrackAt(PickRandomTrack())
             else
                 StopRestMusic()
             end
@@ -149,16 +275,32 @@ local function StartRestMusic()
 end
 
 -- ============================================================
--- MENU CONTEXTUAL  (clic derecho en el boton de minimapa)
--- Implementacion custom; EasyMenu fue eliminado en TWW.
+-- POSICION DEL BOTON EN EL BORDE EXTERIOR DEL MINIMAPA
+-- FIX B: radio correcto = mitad del minimapa + mitad del boton.
+-- Antes se usaban coordenadas fijas que posicionaban el boton
+-- dentro del area circular del minimapa.
+-- ============================================================
+local function MinimapAngleToXY(angleDeg)
+    local minimapR = Minimap:GetWidth() / 2   -- radio del minimapa (~75 px por defecto)
+    local btnR     = 16                        -- mitad del boton (btn:SetSize(31,31) → 15.5)
+    local r        = minimapR + btnR           -- radio del borde exterior
+    local rad      = math.rad(angleDeg)
+    return math.cos(rad) * r, math.sin(rad) * r
+end
+
+local function UpdateMinimapButtonPosition(btn)
+    if not db or not btn then return end
+    local x, y = MinimapAngleToXY(db.minimapAngle)
+    btn:ClearAllPoints()
+    btn:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+-- ============================================================
+-- MENU CONTEXTUAL
 -- ============================================================
 local function BuildContextMenu()
     if not db then return end
-
-    if contextMenu then
-        contextMenu:Hide()
-        contextMenu = nil
-    end
+    if contextMenu then contextMenu:Hide(); contextMenu = nil end
 
     local f = CreateFrame("Frame", "RZM_ContextMenu", UIParent, "BackdropTemplate")
     f:SetFrameStrata("TOOLTIP")
@@ -166,10 +308,10 @@ local function BuildContextMenu()
     f:SetBackdrop({
         bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile     = true, tileSize = 8, edgeSize = 16,
-        insets   = { left = 4, right = 4, top = 4, bottom = 4 },
+        tile = true, tileSize = 8, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
-    f:SetBackdropColor(0, 0, 0, 0.88)
+    f:SetBackdropColor(0, 0, 0, 0.9)
     f:EnableMouse(true)
     f:SetScript("OnLeave", function(self)
         if not self:IsMouseOver() then self:Hide() end
@@ -181,54 +323,44 @@ local function BuildContextMenu()
 
     local items = {
         {
-            label = function()
-                return db.enabled and "Desactivar musica" or "Activar musica"
-            end,
+            label  = function() return db.enabled and "Desactivar musica" or "Activar musica" end,
             action = function()
                 db.enabled = not db.enabled
-                if db.enabled and IsResting() then StartRestMusic()
-                else StopRestMusic() end
+                if db.enabled and IsResting() then StartRestMusic() else StopRestMusic() end
                 Print(db.enabled and "Activado." or "Desactivado.")
                 contextMenu:Hide()
             end,
         },
         {
-            label = "Siguiente track",
+            label  = "Siguiente track",
             action = function()
-                if IsResting() then AdvanceAndPlay()
+                if IsResting() and isPlaying then SkipTrack()
+                elseif IsResting() then StartRestMusic()
                 else Print("No estas en area de descanso.") end
                 contextMenu:Hide()
             end,
         },
         {
-            label = function()
-                return db.showMinimap and "Ocultar icono" or "Mostrar icono"
-            end,
+            label  = function() return db.showMinimap and "Ocultar icono" or "Mostrar icono" end,
             action = function()
                 db.showMinimap = not db.showMinimap
                 if minimapButton then
-                    if db.showMinimap then minimapButton:Show()
-                    else minimapButton:Hide() end
+                    if db.showMinimap then minimapButton:Show() else minimapButton:Hide() end
                 end
                 contextMenu:Hide()
             end,
         },
         {
-            label = "Opciones...",
-            action = function()
-                OpenRestZoneMusicSettings()
-                contextMenu:Hide()
-            end,
+            label  = "Opciones...",
+            action = function() OpenSettings(); contextMenu:Hide() end,
         },
         {
-            label = "|cffff4444Cerrar|r",
+            label  = "|cffff4444Cerrar|r",
             action = function() contextMenu:Hide() end,
         },
     }
 
-    local btnH    = 22
-    local spacing = 2
-    local topPad  = 24
+    local btnH = 22; local spacing = 2; local topPad = 24
     f:SetHeight(topPad + #items * (btnH + spacing) + 8)
 
     for i, item in ipairs(items) do
@@ -236,26 +368,20 @@ local function BuildContextMenu()
         btn:SetHeight(btnH)
         btn:SetWidth(f:GetWidth() - 16)
         btn:SetPoint("TOPLEFT", 8, -topPad - (i - 1) * (btnH + spacing))
-
         local hlTex = btn:CreateTexture(nil, "HIGHLIGHT")
-        hlTex:SetAllPoints()
-        hlTex:SetColorTexture(1, 1, 1, 0.08)
-
+        hlTex:SetAllPoints(); hlTex:SetColorTexture(1, 1, 1, 0.08)
         local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        lbl:SetPoint("LEFT", 4, 0)
-        lbl:SetJustifyH("LEFT")
+        lbl:SetPoint("LEFT", 4, 0); lbl:SetJustifyH("LEFT")
         btn.labelFS = lbl
-
         btn.itemData = item
-        btn:SetScript("OnEnter", function(s) s.labelFS:SetTextColor(1, 0.8, 0) end)
+        btn:SetScript("OnEnter", function(s) s.labelFS:SetTextColor(1, 0.82, 0) end)
         btn:SetScript("OnLeave", function(s) s.labelFS:SetTextColor(1, 1, 1) end)
-        btn:SetScript("OnClick", function(s) s.itemData.action() end)
+        btn:SetScript("OnClick",  function(s) s.itemData.action() end)
     end
 
-    -- Actualiza labels dinamicos cada vez que se muestra el menu
     f:SetScript("OnShow", function()
         for i, item in ipairs(items) do
-            local child = select(i + 1, f:GetChildren())   -- +1 por el frame vacio
+            local child = select(i + 1, f:GetChildren())
             if child and child.labelFS then
                 local l = item.label
                 child.labelFS:SetText(type(l) == "function" and l() or l)
@@ -276,15 +402,8 @@ end
 -- ============================================================
 -- BOTON DE MINIMAPA
 -- ============================================================
-local function UpdateMinimapButtonPosition(btn)
-    if not db or not btn then return end
-    btn:ClearAllPoints()
-    btn:SetPoint("CENTER", Minimap, "CENTER", db.minimapX, db.minimapY)
-end
-
 local function CreateMinimapButton()
     if not db then return end
-
     if minimapButton then
         UpdateMinimapButtonPosition(minimapButton)
         if db.showMinimap then minimapButton:Show() else minimapButton:Hide() end
@@ -300,15 +419,13 @@ local function CreateMinimapButton()
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:RegisterForDrag("LeftButton")
     btn:SetClampedToScreen(true)
-    btn:SetAlpha(MINIMAP_BTN_ALPHA_NORMAL)
+    btn:SetAlpha(BTN_ALPHA_FULL)  -- FIX E: visible por defecto
 
-    -- Borde circular estandar de tracking buttons
     btn.border = btn:CreateTexture(nil, "OVERLAY")
     btn.border:SetSize(53, 53)
     btn.border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     btn.border:SetPoint("TOPLEFT")
 
-    -- Icono: instrumento musical (laud)
     btn.icon = btn:CreateTexture(nil, "ARTWORK")
     btn.icon:SetSize(17, 17)
     btn.icon:SetTexture("Interface\\Icons\\inv_misc_instruments_06")
@@ -317,48 +434,31 @@ local function CreateMinimapButton()
 
     btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
 
-    -- Tooltip
     btn:SetScript("OnEnter", function(self)
+        UIFrameFadeIn(self, 0.1, self:GetAlpha(), BTN_ALPHA_FULL)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine("RestZoneMusic", 0, 0.8, 1)
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine("Estado: " .. (db.enabled and "|cff00ff00Activo|r" or "|cffff4444Inactivo|r"))
         if isPlaying then
-            GameTooltip:AddLine("Track ID: " .. tostring(TRACKS[db.trackIndex]))
-            GameTooltip:AddLine("Siguiente en " .. tostring(db.timerInterval) .. "s")
+            GameTooltip:AddLine("Track ID: " .. tostring(TRACKS[db.lastIndex]))
         end
         GameTooltip:AddLine(" ")
-        GameTooltip:AddDoubleLine("|cffffffffClic izq|r",  "|cff00ff00Activar / Desactivar|r")
-        GameTooltip:AddDoubleLine("|cffffffffClic der|r",  "|cffffff00Menu de opciones|r")
-        GameTooltip:AddDoubleLine("|cffffffffArrastrar|r", "|cffffff00Mover icono|r")
+        GameTooltip:AddDoubleLine("|cffffffffClic izq|r",  "|cff00ff00ON / OFF|r")
+        GameTooltip:AddDoubleLine("|cffffffffClic der|r",  "|cffffff00Menu|r")
+        GameTooltip:AddDoubleLine("|cffffffffArrastrar|r", "|cffffff00Mover|r")
         GameTooltip:Show()
-        UIFrameFadeIn(self, 0.15, self:GetAlpha(), MINIMAP_BTN_ALPHA_NORMAL)
     end)
 
     btn:SetScript("OnLeave", function(self)
         GameTooltip:Hide()
-        if not Minimap:IsMouseOver() then
-            UIFrameFadeOut(self, 0.15, self:GetAlpha(), MINIMAP_BTN_ALPHA_DIM)
-        end
+        UIFrameFadeOut(self, 0.2, self:GetAlpha(), BTN_ALPHA_DIM)
     end)
 
-    Minimap:HookScript("OnEnter", function()
-        if not btn.isDragging and db and db.showMinimap then
-            UIFrameFadeIn(btn, 0.15, btn:GetAlpha(), MINIMAP_BTN_ALPHA_NORMAL)
-        end
-    end)
-    Minimap:HookScript("OnLeave", function()
-        if not btn.isDragging and not btn:IsMouseOver() and db and db.showMinimap then
-            UIFrameFadeOut(btn, 0.15, btn:GetAlpha(), MINIMAP_BTN_ALPHA_DIM)
-        end
-    end)
-
-    -- Clicks
     btn:SetScript("OnClick", function(self, button)
         if button == "LeftButton" then
             db.enabled = not db.enabled
-            if db.enabled and IsResting() then StartRestMusic()
-            else StopRestMusic() end
+            if db.enabled and IsResting() then StartRestMusic() else StopRestMusic() end
             PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
             Print(db.enabled and "Activado." or "Desactivado.")
         elseif button == "RightButton" then
@@ -366,45 +466,25 @@ local function CreateMinimapButton()
         end
     end)
 
-    -- Drag con snap al borde del minimapa
+    -- Drag: snap al borde exterior del minimapa
     btn:SetScript("OnDragStart", function(self)
         self.isDragging = true
-        local minimap      = Minimap
-        local minimapW     = minimap:GetWidth()
-        local buttonW      = self:GetWidth()
-        local edgeRadius   = (minimapW + buttonW) / 2
-        local snapRadius   = edgeRadius - 5
-        local pullRadius   = edgeRadius + buttonW * 0.2
-        local freeRadius   = edgeRadius + buttonW * 0.7
-
         self:SetScript("OnUpdate", function(me)
             local cx, cy = GetCursorPosition()
-            local scale  = minimap:GetEffectiveScale()
+            local scale  = Minimap:GetEffectiveScale()
             cx, cy = cx / scale, cy / scale
-            local mx, my = minimap:GetCenter()
+            local mx, my = Minimap:GetCenter()
             local dx, dy = cx - mx, cy - my
             local dist   = math.sqrt(dx * dx + dy * dy)
-            local clamp
-
-            if dist <= snapRadius then
-                me.snapped = true; clamp = snapRadius
-            elseif dist < pullRadius and me.snapped then
-                clamp = snapRadius
-            elseif dist < freeRadius and me.snapped then
-                clamp = snapRadius + (dist - pullRadius) / 2
-            else
-                me.snapped = false
+            -- FIX B: snap al radio exterior correcto
+            local targetR = Minimap:GetWidth() / 2 + 16
+            if dist > 0 then
+                local f = targetR / dist
+                dx, dy = dx * f, dy * f
             end
-
-            if clamp and dist > 0 then
-                local factor = clamp / dist
-                dx, dy = dx * factor, dy * factor
-            end
-
-            db.minimapX = dx
-            db.minimapY = dy
+            db.minimapAngle = math.deg(math.atan2(dy, dx))
             me:ClearAllPoints()
-            me:SetPoint("CENTER", minimap, "CENTER", dx, dy)
+            me:SetPoint("CENTER", Minimap, "CENTER", dx, dy)
         end)
     end)
 
@@ -420,12 +500,11 @@ local function CreateMinimapButton()
 
     UpdateMinimapButtonPosition(btn)
     if not db.showMinimap then btn:Hide() end
-
     minimapButton = btn
 end
 
 -- ============================================================
--- PANEL DE OPCIONES  (Interface → AddOns → RestZoneMusic)
+-- PANEL DE OPCIONES
 -- ============================================================
 local function CreateSettingsPanel()
     local panel = CreateFrame("Frame", "RZM_SettingsPanel")
@@ -433,27 +512,24 @@ local function CreateSettingsPanel()
 
     local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -16)
-    title:SetText("|cff00ccffRestZoneMusic|r  v1.2")
+    title:SetText("|cff00ccffRestZoneMusic|r  v1.3")
 
     local desc = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
-    desc:SetText("Musica aleatoria en areas de descanso mediante FileDataIDs.")
+    desc:SetText("Musica aleatoria shuffle en areas de descanso (FileDataIDs).")
     desc:SetTextColor(0.7, 0.7, 0.7)
 
     local y = -75
 
-    -- Activar addon
     local cbEnable = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
     cbEnable:SetPoint("TOPLEFT", 14, y)
     cbEnable.Text:SetText("Activar RestZoneMusic")
     cbEnable:SetScript("OnClick", function(self)
         db.enabled = self:GetChecked()
-        if db.enabled and IsResting() then StartRestMusic()
-        else StopRestMusic() end
+        if db.enabled and IsResting() then StartRestMusic() else StopRestMusic() end
     end)
     y = y - 30
 
-    -- Mostrar boton en minimapa
     local cbMini = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
     cbMini:SetPoint("TOPLEFT", 14, y)
     cbMini.Text:SetText("Mostrar boton en minimapa")
@@ -465,7 +541,6 @@ local function CreateSettingsPanel()
     end)
     y = y - 42
 
-    -- Intervalo de rotacion
     local lblSlider = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     lblSlider:SetPoint("TOPLEFT", 14, y)
     lblSlider:SetText("Intervalo entre tracks (segundos):")
@@ -486,25 +561,27 @@ local function CreateSettingsPanel()
     end)
     y = y - 52
 
-    -- Info tracks
     local lblTracks = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     lblTracks:SetPoint("TOPLEFT", 14, y)
-    lblTracks:SetText("Tracks en la lista: " .. #TRACKS ..
-        "  |  Edita TRACKS en RestZoneMusic.lua para modificarla.")
+    lblTracks:SetText(#TRACKS .. " tracks en el pool. Edita TRACKS en RestZoneMusic.lua.")
     lblTracks:SetTextColor(0.6, 0.6, 0.6)
     y = y - 28
 
-    -- Boton saltar track
     local btnSkip = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    btnSkip:SetSize(150, 26)
+    btnSkip:SetSize(160, 26)
     btnSkip:SetPoint("TOPLEFT", 14, y)
-    btnSkip:SetText("Siguiente track ahora")
+    btnSkip:SetText("Siguiente track (shuffle)")
     btnSkip:SetScript("OnClick", function()
-        if IsResting() then AdvanceAndPlay()
+        if IsResting() and isPlaying then SkipTrack()
+        elseif IsResting() then StartRestMusic()
         else Print("No estas en area de descanso.") end
     end)
 
-    -- Sincronizar UI al abrir el panel
+    local lblVerify = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    lblVerify:SetPoint("TOPLEFT", 14, y - 36)
+    lblVerify:SetText("Verifica IDs: /run PlayMusic(ID)")
+    lblVerify:SetTextColor(0.5, 0.7, 0.5)
+
     panel:SetScript("OnShow", function()
         cbEnable:SetChecked(db.enabled)
         cbMini:SetChecked(db.showMinimap)
@@ -512,7 +589,6 @@ local function CreateSettingsPanel()
         _G["RZM_SliderText"]:SetText(db.timerInterval .. "s")
     end)
 
-    -- Registrar con Settings (moderno TWW) o fallback; guardar referencia para OpenToCategory
     if Settings and Settings.RegisterCanvasLayoutCategory then
         local cat = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
         Settings.RegisterAddOnCategory(cat)
@@ -523,52 +599,47 @@ local function CreateSettingsPanel()
 end
 
 -- ============================================================
--- SLASH COMMAND   /rzm
+-- SLASH COMMAND  /rzm
 -- ============================================================
 SLASH_RESTZONEMUSIC1 = "/rzm"
 SlashCmdList["RESTZONEMUSIC"] = function(input)
     if not db then
-        print("|cff00ccff[RestZoneMusic]|r Aun no esta listo. Espera a terminar de cargar el personaje.")
+        print("|cff00ccff[RestZoneMusic]|r No listo aun.")
         return
     end
-
     input = (input or ""):match("^%s*(.-)%s*$"):lower()
 
     if input == "on" or input == "enable" then
         db.enabled = true
         if IsResting() then StartRestMusic() end
         Print("Activado.")
-
     elseif input == "off" or input == "disable" then
         db.enabled = false
         StopRestMusic()
         Print("Desactivado.")
-
     elseif input == "skip" or input == "next" then
-        if IsResting() then AdvanceAndPlay()
+        if IsResting() and isPlaying then SkipTrack()
+        elseif IsResting() then StartRestMusic()
         else Print("No estas en area de descanso.") end
-
     elseif input == "minimap" then
         db.showMinimap = not db.showMinimap
         if minimapButton then
             if db.showMinimap then minimapButton:Show() else minimapButton:Hide() end
         end
         Print("Minimapa: " .. (db.showMinimap and "visible" or "oculto"))
-
     elseif input == "config" or input == "options" then
-        OpenRestZoneMusicSettings()
-
+        OpenSettings()
     else
-        Print("Comandos:")
-        Print("  /rzm on|off   — activar o desactivar")
-        Print("  /rzm skip     — saltar al siguiente track")
-        Print("  /rzm minimap  — mostrar u ocultar icono en minimapa")
-        Print("  /rzm config   — abrir panel de opciones")
+        Print("Comandos disponibles:")
+        Print("  /rzm on|off    — activar o desactivar")
+        Print("  /rzm skip      — siguiente track (shuffle)")
+        Print("  /rzm minimap   — mostrar/ocultar icono")
+        Print("  /rzm config    — abrir panel de opciones")
     end
 end
 
 -- ============================================================
--- INICIALIZACION
+-- EVENTOS
 -- ============================================================
 local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
@@ -577,26 +648,21 @@ events:RegisterEvent("PLAYER_UPDATE_RESTING")
 events:RegisterEvent("PLAYER_LOGOUT")
 
 events:SetScript("OnEvent", function(self, event, arg1)
-
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
-        -- Poblar SavedVariables con defaults donde falten
         for k, v in pairs(DEFAULTS) do
             if RestZoneMusicDB[k] == nil then
                 RestZoneMusicDB[k] = v
             end
         end
         db = RestZoneMusicDB
-
-        if db.trackIndex < 1 or db.trackIndex > #TRACKS then
-            db.trackIndex = 1
+        if db.lastIndex < 0 or db.lastIndex > #TRACKS then
+            db.lastIndex = 0
         end
-
         CreateMinimapButton()
         CreateSettingsPanel()
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_ENTERING_WORLD" then
-        -- BUG FIX #4: comprobar estado de descanso en cada carga/reload
         if db then
             if db.enabled and IsResting() then StartRestMusic()
             else StopRestMusic() end

@@ -2,7 +2,7 @@
 ## Title: RestZoneMusic
 ## Notes: Musica aleatoria en areas de descanso (FileDataIDs). Si aparece desactualizado, iguala este numero a select(4, GetBuildInfo()) o activa "Cargar addons desactualizados".
 ## Author: V
-## Version: 1.2
+## Version: 1.3
 ## SavedVariables: RestZoneMusicDB
 
 RestZoneMusic.lua
