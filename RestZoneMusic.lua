@@ -10,12 +10,7 @@ local AceConfigDialog = assert(
     "RestZoneMusic: Falla crítica. AceConfigDialog-3.0 no está cargado."
 )
 
--- Lua de WoW no expone time(); semilla con tiempo de servidor + fraccion de sesion
-do
-    local seed = (GetServerTime() + math.floor(GetTime() * 1000000)) % 2147483647
-    if seed == 0 then seed = 1 end
-    math.randomseed(seed)
-end
+-- Descartar primeros valores de la secuencia PRNG del cliente (sin math.randomseed; lo gestiona el motor)
 math.random()
 math.random()
 math.random()
@@ -180,7 +175,7 @@ local function CreateMinimapButton()
             db.enabled = not db.enabled
             if db.enabled and IsResting() then StartRestMusic() else StopRestMusic() end
         elseif button == "RightButton" then
-            Settings.OpenToCategory("RestZoneMusic")
+            AceConfigDialog:Open("RestZoneMusic")
         end
     end)
 
@@ -286,5 +281,5 @@ end)
 
 SLASH_RESTZONEMUSIC1 = "/rzm"
 SlashCmdList["RESTZONEMUSIC"] = function()
-    Settings.OpenToCategory("RestZoneMusic")
+    AceConfigDialog:Open("RestZoneMusic")
 end
