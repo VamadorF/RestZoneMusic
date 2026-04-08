@@ -50,7 +50,7 @@ local TRACKS = {
     551820, 551821, 551822, 551823, 551824, 551825, 551826, 551827,
 
     -- Warlords of Draenor
-    641804, 641805, 641806, 641807, 641808, 641809, 641810, 642878,
+    641804, 641805, 641806, 641807, 641808, 641809, 641810, 642866, 642867, 642868, 642878,
 
     -- Legion
     731548, 731549, 731550, 731551, 731552, 731553, 731554, 731555, 731556,
@@ -67,19 +67,38 @@ local TRACKS = {
     4013993, 4013994, 4013995, 4013996, 4013997, 4013998, 4013999, 4014000,
     4014001, 4014002, 4014003, 4014004, 4014005,
 
+    -- IDs adicionales validados (repositorio)
+    1390342, 1390344, 2005952, 2005953, 2005954, 4622170, 4622171,
+
     -- The War Within
-    5341735, 5341736, 5341737, 5341738, 5341739, 5341740, 5341741, 5341742
+    5341735, 5341736, 5341737, 5341738, 5341739, 5341740, 5341741, 5341742, 5341743, 5341744
 }
+
+-- Bolsa Fisher-Yates: cada indice sale una vez por ciclo completo (distribucion uniforme por ronda)
+local shuffleBag = {}
+local bagIndex = 0
+
+local function FillAndShuffleBag()
+    for i = 1, #TRACKS do
+        shuffleBag[i] = i
+    end
+    for i = #shuffleBag, 2, -1 do
+        local j = math.random(i)
+        shuffleBag[i], shuffleBag[j] = shuffleBag[j], shuffleBag[i]
+    end
+    bagIndex = 1
+end
 
 local function PickRandomTrack()
     if #TRACKS <= 1 then return 1 end
-    local idx
-    local tries = 0
-    repeat
-        idx = math.random(1, #TRACKS)
-        tries = tries + 1
-    until idx ~= db.lastIndex or tries > 10
+    if #shuffleBag == 0 or bagIndex > #shuffleBag then
+        FillAndShuffleBag()
+    end
+
+    local idx = shuffleBag[bagIndex]
+    bagIndex = bagIndex + 1
     db.lastIndex = idx
+
     return idx
 end
 
@@ -282,6 +301,8 @@ events:SetScript("OnEvent", function(self, event, arg1)
         end
         db = RestZoneMusicDB
         if db.lastIndex < 0 or db.lastIndex > #TRACKS then db.lastIndex = 0 end
+        wipe(shuffleBag)
+        bagIndex = 0
 
         BuildAceConfig()
         CreateMinimapButton()
