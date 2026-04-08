@@ -3165,7 +3165,7 @@ RestZoneMusic_Data = {
         [2204149] = "battleforazeroth — mus_80_rtc_kultiras_jainaintro.mp3",
     },
 
-    -- Duración en segundos por FileDataID (opcional). Si no hay entrada, se usa defaultTrackDuration en opciones.
+    -- Rellena con: python tools/gen_music_data.py --export-root ...
     TRACK_DURATIONS = {
     },
 }
