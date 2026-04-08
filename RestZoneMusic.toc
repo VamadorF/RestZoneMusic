@@ -1,8 +1,8 @@
 ## Interface: 120001
 ## Title: RestZoneMusic
-## Notes: Plays random WoW music (via FileDataIDs) in rest areas, replacing zone music. Track rotates on a fixed timer.
+## Notes: Musica aleatoria en areas de descanso (FileDataIDs). Si aparece desactualizado, iguala este numero a select(4, GetBuildInfo()) o activa "Cargar addons desactualizados".
 ## Author: V
-## Version: 1.1
+## Version: 1.2
 ## SavedVariables: RestZoneMusicDB
 
 RestZoneMusic.lua
