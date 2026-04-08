@@ -31,6 +31,33 @@ assert(
 local TRACKS = RestZoneMusic_Data.TRACKS
 local TRACK_NAMES = RestZoneMusic_Data.TRACK_NAMES
 
+-- Referencias Wowhead / zona taberna que suelen no aparecer en listfiles comunitarios (otro espacio de IDs).
+local EXTRA_ZONE_TRACKS = {
+    { id = 4516,   name = "Zone-TavernAlliance (Lion's Pride, Pig & Whistle, etc.)" },
+    { id = 11806,  name = "Zone-TavernDwarf01 (Stonefire, Thunderbrew)" },
+    { id = 12137,  name = "Zone-TavernUndead (Gallow's End, Tarren Mill)" },
+    { id = 12329,  name = "Zone-TavernTauren (Elder's Hearth, Smoke Lodge)" },
+    { id = 11805,  name = "Zone-TavernPirate (Salty Sailor, Bloodsail)" },
+    { id = 5234,   name = "Zone-TavernHorde (Spirit Stone)" },
+    { id = 5355,   name = "Zone-TavernHorde01 (Grunt's Place)" },
+    { id = 12328,  name = "Zone-TavernOrc / troll (Bad Juju Bar & Grill)" },
+    { id = 80449,  name = "Zone-TavernNightElf02 (Hunters' Refuge)" },
+    { id = 12136,  name = "Zone-TavernTempleofTheMoon" },
+    { id = 233578, name = "Mariners Tavern (Jukebox)" },
+    { id = 178127, name = "Mariners Tavern (_H)" },
+    { id = 218179, name = "Tradewinds Tavern (A)" },
+    { id = 338492, name = "Tradewinds Tavern (alt / otro parche)" },
+}
+
+for i = 1, #EXTRA_ZONE_TRACKS do
+    local row = EXTRA_ZONE_TRACKS[i]
+    local id = row.id
+    if not TRACK_NAMES[id] then
+        TRACK_NAMES[id] = row.name
+        TRACKS[#TRACKS + 1] = id
+    end
+end
+
 local shuffleBag = {}
 local bagIndex = 0
 
