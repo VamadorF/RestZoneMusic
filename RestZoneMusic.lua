@@ -158,7 +158,7 @@ local function CreateMinimapButton()
     btn:SetFrameLevel(8)
     btn:SetClampedToScreen(true)
     btn:EnableMouse(true)
-    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:RegisterForClicks("AnyUp")
 
     btn.border = btn:CreateTexture(nil, "OVERLAY")
     btn.border:SetSize(53, 53)
@@ -166,22 +166,41 @@ local function CreateMinimapButton()
     btn.border:SetPoint("TOPLEFT")
 
     btn.icon = btn:CreateTexture(nil, "ARTWORK")
-    btn.icon:SetSize(17, 17)
+    btn.icon:SetSize(20, 20)
     btn.icon:SetTexture(133868)
-    btn.icon:SetPoint("CENTER")
+    btn.icon:SetPoint("CENTER", 0, 1)
+
+    btn.highlight = btn:CreateTexture(nil, "HIGHLIGHT")
+    btn.highlight:SetSize(31, 31)
+    btn.highlight:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    btn.highlight:SetBlendMode("ADD")
+    btn.highlight:SetPoint("CENTER")
+
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("RestZoneMusic", 0, 0.8, 1)
+        GameTooltip:AddLine("Clic Izquierdo: Abrir opciones", 1, 1, 1)
+        GameTooltip:AddLine("Clic Derecho: Siguiente pista", 1, 1, 1)
+        GameTooltip:AddLine("Shift + Clic: Activar / Desactivar", 0.5, 0.5, 0.5)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     btn:SetScript("OnClick", function(self, button)
-        if button == "LeftButton" then
+        if IsShiftKeyDown() then
             db.enabled = not db.enabled
             if db.enabled and IsResting() then StartRestMusic() else StopRestMusic() end
-        elseif button == "RightButton" then
+            print("|cff00ccff[RestZoneMusic]|r " .. (db.enabled and "Activado" or "Desactivado"))
+        elseif button == "LeftButton" then
             AceConfigDialog:Open("RestZoneMusic")
+        elseif button == "RightButton" then
+            if IsResting() then SkipTrack() else print("|cff00ccff[RestZoneMusic]|r Fuera de zona de descanso.") end
         end
     end)
 
     btn:RegisterForDrag("LeftButton")
     btn:SetScript("OnDragStart", function(self)
-        self:SetScript("OnUpdate", function(me)
+        self:SetScript("OnUpdate", function()
             local cx, cy = GetCursorPosition()
             local scale = Minimap:GetEffectiveScale()
             local mx, my = Minimap:GetCenter()
