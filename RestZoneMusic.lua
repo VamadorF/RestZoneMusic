@@ -11,13 +11,13 @@ math.random()
 
 RestZoneMusicDB = RestZoneMusicDB or {}
 local db
-local ticker
+local trackEndTimer
 local isPlaying = false
 local pendingPlay = false
 
 local DEFAULTS = {
     enabled = true,
-    timerInterval = 180,
+    defaultTrackDuration = 180,
     lastIndex = 0,
 }
 
@@ -30,6 +30,8 @@ assert(
 
 local TRACKS = RestZoneMusic_Data.TRACKS
 local TRACK_NAMES = RestZoneMusic_Data.TRACK_NAMES
+local TRACK_DURATIONS = (type(RestZoneMusic_Data.TRACK_DURATIONS) == "table" and RestZoneMusic_Data.TRACK_DURATIONS)
+    or {}
 
 -- Referencias Wowhead / zona taberna que suelen no aparecer en listfiles comunitarios (otro espacio de IDs).
 local EXTRA_ZONE_TRACKS = {
@@ -85,14 +87,23 @@ local function PickRandomTrack()
     return idx
 end
 
+local function CancelTrackEndTimer()
+    if trackEndTimer then
+        trackEndTimer:Cancel()
+        trackEndTimer = nil
+    end
+end
+
 local function StopRestMusic()
+    CancelTrackEndTimer()
     if isPlaying then StopMusic(); isPlaying = false end
-    if ticker then ticker:Cancel(); ticker = nil end
     pendingPlay = false
 end
 
 local function PlayTrackAt(idx)
     assert(type(idx) == "number", "RestZoneMusic: PlayTrackAt requiere un índice numérico.")
+
+    CancelTrackEndTimer()
 
     local id = TRACKS[idx]
     if not id then
@@ -104,11 +115,25 @@ local function PlayTrackAt(idx)
 
     local trackName = TRACK_NAMES[id] or "Pista Desconocida"
     print("|cff00ccff[RestZoneMusic]|r Reproduciendo: " .. trackName .. " (ID: " .. id .. ")")
+
+    -- El motor de WoW repite PlayMusic() en bucle; no existe evento de "pista terminada".
+    -- Tras `dur` segundos se corta y se pasa a la siguiente (véase TRACK_DURATIONS por pista).
+    local dur = TRACK_DURATIONS[id] or db.defaultTrackDuration
+    if type(dur) ~= "number" or dur < 5 then dur = 180 end
+
+    trackEndTimer = C_Timer.NewTimer(dur, function()
+        trackEndTimer = nil
+        if not db or not db.enabled or not IsResting() then
+            StopRestMusic()
+            return
+        end
+        PlayTrackAt(PickRandomTrack())
+    end)
 end
 
 local function StartRestMusic()
     if not db.enabled then return end
-    if ticker then ticker:Cancel(); ticker = nil end
+    CancelTrackEndTimer()
     pendingPlay = true
     C_Timer.After(3.0, function()
         if not pendingPlay then return end
@@ -116,23 +141,12 @@ local function StartRestMusic()
         if not IsResting() or not db.enabled then return end
         StopMusic()
         PlayTrackAt(PickRandomTrack())
-        ticker = C_Timer.NewTicker(db.timerInterval, function()
-            if IsResting() and db.enabled then
-                PlayTrackAt(PickRandomTrack())
-            else
-                StopRestMusic()
-            end
-        end)
     end)
 end
 
 local function SkipTrack()
-    if not db or not db.enabled then return end
-    if ticker then ticker:Cancel(); ticker = nil end
+    if not db or not db.enabled or not IsResting() then return end
     PlayTrackAt(PickRandomTrack())
-    ticker = C_Timer.NewTicker(db.timerInterval, function()
-        if IsResting() and db.enabled then PlayTrackAt(PickRandomTrack()) else StopRestMusic() end
-    end)
 end
 
 -- Data Broker + LibDBIcon (posicion radial, persistencia de icono)
@@ -185,13 +199,16 @@ local function BuildAceConfig()
                     if val then icon:Show("RestZoneMusic") else icon:Hide("RestZoneMusic") end
                 end,
             },
-            timerInterval = {
+            defaultTrackDuration = {
                 order = 3,
                 type = "range",
-                name = "Intervalo (segundos)",
-                min = 30, max = 600, step = 10,
-                get = function() return db.timerInterval end,
-                set = function(_, val) db.timerInterval = val end,
+                name = "Duración por pista (seg)",
+                desc = "El API PlayMusic() del juego repite la pista en bucle y no avisa cuando acaba. "
+                    .. "El addon espera este tiempo y pasa a la siguiente. "
+                    .. "Pistas concretas pueden tener duración propia en TRACK_DURATIONS (datos).",
+                min = 30, max = 900, step = 5,
+                get = function() return db.defaultTrackDuration end,
+                set = function(_, val) db.defaultTrackDuration = val end,
             },
             skipTrack = {
                 order = 4,
@@ -222,6 +239,13 @@ events:SetScript("OnEvent", function(self, event, arg1)
             if RestZoneMusicDB[k] == nil then RestZoneMusicDB[k] = v end
         end
         db = RestZoneMusicDB
+        if type(db.timerInterval) == "number" then
+            db.defaultTrackDuration = db.timerInterval
+            db.timerInterval = nil
+        end
+        if type(db.defaultTrackDuration) ~= "number" or db.defaultTrackDuration < 5 then
+            db.defaultTrackDuration = DEFAULTS.defaultTrackDuration
+        end
         if db.lastIndex < 0 or db.lastIndex > #TRACKS then db.lastIndex = 0 end
 
         -- minimap: tabla propia por jugador (no reutilizar referencia de DEFAULTS)

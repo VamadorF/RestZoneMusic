@@ -3164,4 +3164,8 @@ RestZoneMusic_Data = {
         [2203964] = "battleforazeroth — mus_80_waycrestwedding_b.mp3",
         [2204149] = "battleforazeroth — mus_80_rtc_kultiras_jainaintro.mp3",
     },
+
+    -- Duración en segundos por FileDataID (opcional). Si no hay entrada, se usa defaultTrackDuration en opciones.
+    TRACK_DURATIONS = {
+    },
 }

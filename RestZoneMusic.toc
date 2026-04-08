@@ -2,7 +2,7 @@
 ## Title: RestZoneMusic
 ## Notes: Musica aleatoria en areas de descanso.
 ## Author: V
-## Version: 1.6
+## Version: 1.7
 ## SavedVariables: RestZoneMusicDB
 ## IconTexture: 133868
 

@@ -132,9 +132,17 @@ def main() -> None:
         line_len += len(piece) + 1
     flush_names()
 
-    out_lines.append("    },")
-    out_lines.append("}")
-    out_lines.append("")
+    out_lines.extend(
+        [
+            "    },",
+            "",
+            "    -- Duración en segundos por FileDataID (opcional).",
+            "    TRACK_DURATIONS = {",
+            "    },",
+            "}",
+            "",
+        ]
+    )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     text = "\n".join(out_lines)
